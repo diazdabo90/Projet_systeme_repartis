@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetWatch — Supervision Réseau</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Exo+2:wght@200;300;400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#060a10;--bg2:#0c1420;--bg3:#111d2e;--border:#1a3050;
+    --cyan:#00d4ff;--cyan-dim:#0088aa;--green:#00ff88;--green-dim:#007744;
+    --red:#ff3355;--red-dim:#881122;--orange:#ff8c00;--yellow:#ffd700;
+    --text:#c8dff0;--text-dim:#4a6a8a;
+    --glow-c:0 0 12px #00d4ff88;--glow-g:0 0 12px #00ff8888;--glow-r:0 0 12px #ff335588;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Exo 2',sans-serif;font-size:13px;min-height:100vh;overflow-x:hidden}
+  body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.07) 2px,rgba(0,0,0,.07) 4px);pointer-events:none;z-index:9999}
+  body::after{content:'';position:fixed;inset:0;background-image:radial-gradient(ellipse 80% 50% at 20% 20%,rgba(0,212,255,.04) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 80% 80%,rgba(0,255,136,.03) 0%,transparent 50%);pointer-events:none;z-index:0}
+
+  /* ── TOP BAR ── */
+  .topbar{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:24px;padding:0 24px;height:52px;background:rgba(6,10,16,.95);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}
+  .logo{display:flex;align-items:center;gap:10px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:20px;letter-spacing:3px;color:var(--cyan);text-shadow:var(--glow-c);white-space:nowrap}
+  .logo-icon{width:28px;height:28px;border:2px solid var(--cyan);border-radius:4px;display:grid;place-items:center}
+  .logo-icon::before{content:'';width:10px;height:10px;background:var(--cyan);border-radius:50%;box-shadow:var(--glow-c);animation:pulse-dot 2s ease-in-out infinite}
+  @keyframes pulse-dot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.6);opacity:.5}}
+  .logo-sub{font-size:10px;color:var(--text-dim);letter-spacing:2px;font-weight:400}
+  .topbar-spacer{flex:1}
+  .status-pill{display:flex;align-items:center;gap:6px;padding:4px 12px;border:1px solid var(--border);border-radius:20px;font-family:'Share Tech Mono',monospace;font-size:11px}
+  .dot{width:7px;height:7px;border-radius:50%}
+  .dot.active{background:var(--green);box-shadow:var(--glow-g);animation:blink 1.5s ease-in-out infinite}
+  .dot.error{background:var(--red);box-shadow:var(--glow-r)}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+  .topbar-time{font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--cyan);letter-spacing:2px}
+
+  /* ── API STATUS BANNER ── */
+  #api-banner{display:none;background:rgba(255,51,85,.1);border-bottom:1px solid var(--red-dim);padding:8px 24px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--red);text-align:center}
+  #api-banner.show{display:block}
+
+  /* ── LAYOUT ── */
+  .layout{display:grid;grid-template-columns:220px 1fr;grid-template-rows:auto 1fr;min-height:calc(100vh - 52px);position:relative;z-index:1}
+  .sidebar{grid-row:1/3;background:var(--bg2);border-right:1px solid var(--border);padding:20px 0;display:flex;flex-direction:column;gap:4px;position:sticky;top:52px;height:calc(100vh - 52px);overflow-y:auto}
+  .sidebar-section{padding:6px 16px 2px;font-size:9px;letter-spacing:2px;color:var(--text-dim);font-family:'Rajdhani',sans-serif;font-weight:600;text-transform:uppercase;margin-top:8px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;border-left:3px solid transparent;transition:all .15s;font-size:13px;font-weight:500;color:var(--text-dim)}
+  .nav-item:hover{background:rgba(0,212,255,.06);color:var(--text);border-left-color:var(--cyan-dim)}
+  .nav-item.active{background:rgba(0,212,255,.1);color:var(--cyan);border-left-color:var(--cyan)}
+  .nav-icon{font-size:14px;width:18px;text-align:center}
+  .nav-badge{margin-left:auto;background:var(--red);color:white;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px}
+  .node-list-item{display:flex;align-items:center;gap:8px;padding:7px 20px 7px 28px;cursor:pointer;font-size:12px;color:var(--text-dim);transition:all .15s}
+  .node-list-item:hover{color:var(--text);background:rgba(255,255,255,.03)}
+  .node-status-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+
+  /* ── STATS BAR ── */
+  .topstats{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border)}
+  .stat-card{background:var(--bg2);padding:18px 20px;display:flex;flex-direction:column;gap:4px}
+  .stat-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);font-family:'Rajdhani',sans-serif;font-weight:600}
+  .stat-value{font-family:'Share Tech Mono',monospace;font-size:28px;font-weight:400;line-height:1}
+  .stat-value.cyan{color:var(--cyan);text-shadow:var(--glow-c)}
+  .stat-value.green{color:var(--green);text-shadow:var(--glow-g)}
+  .stat-value.red{color:var(--red);text-shadow:var(--glow-r)}
+  .stat-value.orange{color:var(--orange)}
+  .stat-sub{font-size:10px;color:var(--text-dim)}
+
+  /* ── MAIN ── */
+  .main{padding:20px;display:flex;flex-direction:column;gap:20px;overflow-y:auto}
+  .section-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .section-title{font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--cyan)}
+  .section-line{flex:1;height:1px;background:linear-gradient(90deg,var(--cyan-dim),transparent)}
+
+  /* ── NODE CARDS ── */
+  .nodes-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
+  .node-card{background:var(--bg2);border:1px solid var(--border);border-radius:4px;overflow:hidden;transition:border-color .2s,box-shadow .2s;cursor:pointer;animation:card-in .4s ease both}
+  @keyframes card-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .node-card:hover{border-color:var(--cyan-dim);box-shadow:0 0 20px rgba(0,212,255,.07)}
+  .node-card.alert{border-color:var(--orange)}
+  .node-card.DOWN{border-color:#331122;opacity:.7}
+  .node-card-header{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.2)}
+  .node-name{font-family:'Share Tech Mono',monospace;font-size:13px;flex:1}
+  .node-os{font-size:10px;color:var(--text-dim)}
+  .node-status-badge{padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:1px;font-family:'Rajdhani',sans-serif}
+  .badge-ACTIVE{background:rgba(0,255,136,.15);color:var(--green);border:1px solid var(--green-dim)}
+  .badge-DOWN{background:rgba(255,51,85,.15);color:var(--red);border:1px solid var(--red-dim)}
+  .badge-alert{background:rgba(255,140,0,.15);color:var(--orange);border:1px solid #664400}
+  .node-card-body{padding:14px;display:flex;flex-direction:column;gap:10px}
+  .metric-row{display:flex;flex-direction:column;gap:4px}
+  .metric-header{display:flex;justify-content:space-between;align-items:center}
+  .metric-name{font-size:10px;letter-spacing:1px;color:var(--text-dim);font-family:'Rajdhani',sans-serif;font-weight:600}
+  .metric-val{font-family:'Share Tech Mono',monospace;font-size:12px}
+  .metric-bar{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
+  .metric-fill{height:100%;border-radius:2px;transition:width .8s cubic-bezier(.4,0,.2,1)}
+  .fill-normal{background:linear-gradient(90deg,var(--cyan-dim),var(--cyan))}
+  .fill-warning{background:linear-gradient(90deg,#664400,var(--orange))}
+  .fill-danger{background:linear-gradient(90deg,var(--red-dim),var(--red))}
+  .services-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+  .service-tag{display:flex;align-items:center;gap:4px;padding:3px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;font-size:10px;font-family:'Share Tech Mono',monospace}
+  .service-tag.OK{border-color:#003322;color:var(--green)}
+  .service-tag.DOWN{border-color:#330011;color:var(--red)}
+  .svc-dot{width:5px;height:5px;border-radius:50%}
+  .service-tag.OK .svc-dot{background:var(--green)}
+  .service-tag.DOWN .svc-dot{background:var(--red)}
+  .node-footer{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;background:rgba(0,0,0,.15)}
+
+  /* ── CHARTS ── */
+  .charts-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:16px}
+  .chart-canvas{width:100%;height:120px;position:relative;overflow:hidden}
+  .sparkline{width:100%;height:100%}
+
+  /* ── ALERTS TABLE ── */
+  .alerts-table{width:100%;border-collapse:collapse}
+  .alerts-table th{text-align:left;padding:8px 12px;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);font-family:'Rajdhani',sans-serif;font-weight:600;border-bottom:1px solid var(--border)}
+  .alerts-table td{padding:9px 12px;border-bottom:1px solid rgba(26,48,80,.5);font-size:12px;font-family:'Share Tech Mono',monospace}
+  .alerts-table tr:last-child td{border-bottom:none}
+  .alerts-table tr:hover td{background:rgba(0,212,255,.03)}
+  .alert-type-badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:1px}
+  .type-CPU_HIGH{background:rgba(255,140,0,.15);color:var(--orange)}
+  .type-MEM_HIGH{background:rgba(0,212,255,.1);color:var(--cyan)}
+  .type-DISK_HIGH{background:rgba(255,215,0,.1);color:var(--yellow)}
+  .type-NODE_DOWN{background:rgba(255,51,85,.15);color:var(--red)}
+
+  /* ── COMMAND PANEL ── */
+  .cmd-panel{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:16px}
+  .cmd-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .cmd-group{display:flex;flex-direction:column;gap:8px}
+  .cmd-group-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);font-family:'Rajdhani',sans-serif;font-weight:600}
+  .cmd-select{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-family:'Share Tech Mono',monospace;font-size:12px;border-radius:3px;outline:none;cursor:pointer;transition:border-color .15s}
+  .cmd-select:focus{border-color:var(--cyan-dim)}
+  .cmd-select option{background:var(--bg2)}
+  .cmd-btn{padding:8px 16px;background:rgba(0,212,255,.1);border:1px solid var(--cyan-dim);color:var(--cyan);border-radius:3px;font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:600;letter-spacing:2px;cursor:pointer;transition:all .15s;width:100%;margin-top:10px}
+  .cmd-btn:hover{background:rgba(0,212,255,.2);box-shadow:var(--glow-c)}
+  .cmd-btn:active{transform:scale(.98)}
+  .cmd-btn.success{border-color:var(--green-dim);color:var(--green);background:rgba(0,255,136,.1)}
+  .cmd-btn.loading{opacity:.6;cursor:wait}
+
+  /* ── TERMINAL ── */
+  .terminal{background:#030608;border:1px solid var(--border);border-radius:4px;padding:12px 16px;font-family:'Share Tech Mono',monospace;font-size:11px;height:180px;overflow-y:auto;line-height:1.8}
+  .terminal::-webkit-scrollbar{width:4px}
+  .terminal::-webkit-scrollbar-thumb{background:var(--border)}
+  .log-line{display:block}
+  .log-time{color:var(--text-dim)}
+  .log-info{color:var(--cyan)}
+  .log-warn{color:var(--orange)}
+  .log-error{color:var(--red)}
+  .log-ok{color:var(--green)}
+
+  /* ── LOADING ── */
+  .loading-overlay{display:flex;align-items:center;justify-content:center;gap:12px;padding:40px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;font-size:12px}
+  .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ── DETAIL PANEL ── */
+  .detail-panel{position:fixed;top:52px;right:0;width:380px;height:calc(100vh - 52px);background:var(--bg2);border-left:1px solid var(--border);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:200;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}
+  .detail-panel.open{transform:translateX(0)}
+  .detail-close{position:absolute;top:14px;right:14px;background:none;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;width:28px;height:28px;border-radius:3px;font-size:14px;display:grid;place-items:center}
+  .detail-close:hover{border-color:var(--red-dim);color:var(--red)}
+  .detail-node-name{font-family:'Rajdhani',sans-serif;font-size:22px;font-weight:700;color:var(--cyan)}
+  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .detail-info-box{background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:10px}
+  .detail-info-label{font-size:9px;letter-spacing:2px;color:var(--text-dim);font-family:'Rajdhani',sans-serif;font-weight:600;text-transform:uppercase}
+  .detail-info-val{font-family:'Share Tech Mono',monospace;font-size:14px;color:var(--text);margin-top:4px}
+  .port-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+  .port-item{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;font-size:11px;font-family:'Share Tech Mono',monospace}
+  .port-open{color:var(--green)}
+  .port-closed{color:var(--red-dim)}
+
+  /* scrollbar */
+  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar-track{background:var(--bg)}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header class="topbar">
+  <div class="logo">
+    <div class="logo-icon"></div>
+    <div><div>NETWATCH</div><div class="logo-sub">SUPERVISION RÉSEAU</div></div>
+  </div>
+  <div class="topbar-spacer"></div>
+  <div class="status-pill">
+    <div class="dot active" id="api-dot"></div>
+    <span id="api-status-text">CONNEXION API...</span>
+  </div>
+  <div class="status-pill">
+    <span style="color:var(--text-dim)">REFRESH</span>
+    <span style="color:var(--cyan);font-family:'Share Tech Mono',monospace" id="refresh-counter">5s</span>
+  </div>
+  <div class="topbar-time" id="clock">--:--:--</div>
+</header>
+
+<!-- BANNIÈRE ERREUR API -->
+<div id="api-banner">
+  ⚠ Impossible de joindre l'API — Vérifiez que <strong>server.py</strong> est démarré sur le port 8080
+  &nbsp;|&nbsp; <a href="#" onclick="retryConnection()" style="color:var(--orange)">Réessayer</a>
+</div>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sidebar-section">Navigation</div>
+    <div class="nav-item active"><span class="nav-icon">⬡</span> Tableau de bord</div>
+    <div class="nav-item"><span class="nav-icon">◬</span> Alertes <span class="nav-badge" id="alert-badge">0</span></div>
+    <div class="sidebar-section">Nœuds connectés</div>
+    <div id="sidebar-nodes"><div class="loading-overlay"><div class="spinner"></div>Chargement...</div></div>
+  </nav>
+
+  <!-- STATS BAR -->
+  <div class="topstats">
+    <div class="stat-card"><div class="stat-label">Nœuds Total</div><div class="stat-value cyan" id="s-total">—</div><div class="stat-sub">machines supervisées</div></div>
+    <div class="stat-card"><div class="stat-label">En Ligne</div><div class="stat-value green" id="s-active">—</div><div class="stat-sub">actifs maintenant</div></div>
+    <div class="stat-card"><div class="stat-label">En Panne</div><div class="stat-value red" id="s-down">—</div><div class="stat-sub">hors ligne</div></div>
+    <div class="stat-card"><div class="stat-label">CPU Moyen</div><div class="stat-value orange" id="s-cpu">—</div><div class="stat-sub">charge processeur</div></div>
+    <div class="stat-card"><div class="stat-label">Alertes Actives</div><div class="stat-value red" id="s-alerts">—</div><div class="stat-sub">dépassements seuil</div></div>
+  </div>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- NODES -->
+    <div>
+      <div class="section-header">
+        <span class="section-title">◈ État des Nœuds</span>
+        <div class="section-line"></div>
+        <span style="font-size:10px;color:var(--text-dim);font-family:'Share Tech Mono',monospace">
+          DONNÉES RÉELLES <span style="color:var(--green)" id="refresh-tick">●</span>
+        </span>
+      </div>
+      <div id="nodes-grid" class="nodes-grid">
+        <div class="loading-overlay"><div class="spinner"></div>Connexion au serveur...</div>
+      </div>
+    </div>
+
+    <!-- CHARTS -->
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="section-header" style="margin-bottom:8px">
+          <span class="section-title">▲ CPU Moyen — Historique (60 points)</span>
+        </div>
+        <div class="chart-canvas">
+          <svg class="sparkline" id="cpu-chart" viewBox="0 0 400 100" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="section-header" style="margin-bottom:8px">
+          <span class="section-title">▲ RAM Moyenne — Historique (60 points)</span>
+        </div>
+        <div class="chart-canvas">
+          <svg class="sparkline" id="ram-chart" viewBox="0 0 400 100" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTTOM -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+      <!-- ALERTS -->
+      <div>
+        <div class="section-header">
+          <span class="section-title">◬ Dernières Alertes</span>
+          <div class="section-line"></div>
+          <span style="font-size:10px;color:var(--text-dim);cursor:pointer" onclick="loadAlerts()">↻ ACTUALISER</span>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;overflow:hidden">
+          <table class="alerts-table">
+            <thead><tr><th>Heure</th><th>Nœud</th><th>Type</th><th>Message</th></tr></thead>
+            <tbody id="alerts-tbody"><tr><td colspan="4" style="text-align:center;color:var(--text-dim);padding:20px">Chargement...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- CMD + LOG -->
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <div class="section-header">
+            <span class="section-title">◫ Envoyer Commande</span>
+            <div class="section-line"></div>
+          </div>
+          <div class="cmd-panel">
+            <div class="cmd-grid">
+              <div class="cmd-group">
+                <div class="cmd-group-label">Nœud cible</div>
+                <select class="cmd-select" id="cmd-node"><option value="">— Chargement... —</option></select>
+              </div>
+              <div class="cmd-group">
+                <div class="cmd-group-label">Commande</div>
+                <select class="cmd-select" id="cmd-command">
+                  <option value="UP_HTTP">UP_HTTP — Activer HTTP</option>
+                  <option value="UP_SSH">UP_SSH — Activer SSH</option>
+                  <option value="UP_DNS">UP_DNS — Activer DNS</option>
+                  <option value="RESTART">RESTART — Redémarrer agent</option>
+                  <option value="STATUS">STATUS — Forcer rapport</option>
+                </select>
+              </div>
+            </div>
+            <button class="cmd-btn" id="cmd-btn" onclick="sendCommand()">▶ ENVOYER LA COMMANDE</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-header">
+            <span class="section-title">≡ Journal</span>
+            <div class="section-line"></div>
+          </div>
+          <div class="terminal" id="terminal-log"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- DETAIL PANEL -->
+<div class="detail-panel" id="detail-panel">
+  <button class="detail-close" onclick="closeDetail()">✕</button>
+  <div class="detail-node-name" id="dp-name">—</div>
+  <div id="dp-badge"></div>
+  <div class="detail-grid" id="dp-grid"></div>
+  <div><div class="section-header"><span class="section-title">Services</span></div><div class="services-row" id="dp-services"></div></div>
+  <div><div class="section-header"><span class="section-title">Ports</span></div><div class="port-grid" id="dp-ports"></div></div>
+  <div><div class="section-header"><span class="section-title">Historique CPU</span></div>
+    <div style="height:80px"><svg class="sparkline" id="dp-chart" viewBox="0 0 400 80" preserveAspectRatio="none"></svg></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+//  CONFIGURATION API
+// ══════════════════════════════════════════════════
+const API = "http://localhost:8080";
+let nodesData  = [];
+let cpuHistory = [];
+let ramHistory = [];
+let apiOnline  = false;
+let refreshTimer = 5;
+
+// ══════════════════════════════════════════════════
+//  FETCH HELPERS
+// ══════════════════════════════════════════════════
+async function apiFetch(endpoint) {
+  const res = await fetch(API + endpoint, { signal: AbortSignal.timeout(5000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function apiPost(endpoint, body) {
+  const res = await fetch(API + endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function setApiOnline(online) {
+  apiOnline = online;
+  const dot  = document.getElementById("api-dot");
+  const txt  = document.getElementById("api-status-text");
+  const banner = document.getElementById("api-banner");
+  if (online) {
+    dot.className = "dot active";
+    txt.textContent = "API CONNECTÉE";
+    banner.classList.remove("show");
+  } else {
+    dot.className = "dot error";
+    txt.textContent = "API HORS LIGNE";
+    banner.classList.add("show");
+  }
+}
+
+async function retryConnection() {
+  addLog("INFO", "Tentative de reconnexion à l'API...");
+  await loadAll();
+}
+
+// ══════════════════════════════════════════════════
+//  CHARGEMENT DES DONNÉES
+// ══════════════════════════════════════════════════
+async function loadNodes() {
+  try {
+    const data = await apiFetch("/api/nodes");
+    setApiOnline(true);
+    nodesData = data.nodes || [];
+
+    // Mettre à jour les stats
+    document.getElementById("s-total").textContent  = data.total  ?? "—";
+    document.getElementById("s-active").textContent = data.active ?? "—";
+    document.getElementById("s-down").textContent   = data.down   ?? "—";
+
+    const cpuAvg = nodesData.filter(n => n.status !== "DOWN")
+      .reduce((s, n) => s + n.cpu, 0) / Math.max(1, nodesData.filter(n => n.status !== "DOWN").length);
+    document.getElementById("s-cpu").textContent = Math.round(cpuAvg) + "%";
+
+    renderNodes();
+    renderSidebar();
+    return true;
+  } catch (e) {
+    setApiOnline(false);
+    addLog("ERROR", `API inaccessible : ${e.message}`);
+    document.getElementById("nodes-grid").innerHTML =
+      `<div class="loading-overlay" style="grid-column:1/-1">
+         <div class="spinner"></div>En attente du serveur (port 8080)...
+       </div>`;
+    return false;
+  }
+}
+
+async function loadAlerts() {
+  try {
+    const data = await apiFetch("/api/alerts");
+    const alerts = Array.isArray(data) ? data : [];
+    document.getElementById("s-alerts").textContent = alerts.filter(a => a.alert_type !== "NODE_DOWN").length;
+    document.getElementById("alert-badge").textContent = alerts.length;
+
+    const tbody = document.getElementById("alerts-tbody");
+    if (!alerts.length) {
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-dim);padding:20px">Aucune alerte enregistrée</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = alerts.slice(0, 15).map(a => {
+      const t = a.created_at ? String(a.created_at).slice(11, 19) : "—";
+      return `<tr>
+        <td style="color:var(--text-dim)">${t}</td>
+        <td style="color:var(--cyan)">${a.node_id}</td>
+        <td><span class="alert-type-badge type-${a.alert_type}">${a.alert_type}</span></td>
+        <td style="color:var(--text-dim)">${(a.message||"").slice(0,45)}</td>
+      </tr>`;
+    }).join("");
+  } catch (e) {
+    addLog("WARN", `Alertes non disponibles : ${e.message}`);
+  }
+}
+
+async function loadHistory() {
+  try {
+    const data = await apiFetch("/api/history");
+    if (data.cpu && data.cpu.length > 1) {
+      cpuHistory = data.cpu;
+      ramHistory = data.mem;
+      drawSparkline("cpu-chart", cpuHistory, "#00d4ff");
+      drawSparkline("ram-chart",  ramHistory,  "#00ff88");
+    }
+  } catch (e) { /* silencieux */ }
+}
+
+async function loadAll() {
+  const tick = document.getElementById("refresh-tick");
+  tick.style.opacity = "0.3";
+  await loadNodes();
+  await loadAlerts();
+  await loadHistory();
+  tick.style.opacity = "1";
+  addLog("INFO", `Données actualisées — ${nodesData.length} nœud(s) supervisé(s)`);
+}
+
+// ══════════════════════════════════════════════════
+//  RENDU
+// ══════════════════════════════════════════════════
+function fillClass(v) {
+  return v >= 90 ? "fill-danger" : v >= 70 ? "fill-warning" : "fill-normal";
+}
+function valStyle(v) {
+  return v >= 90 ? "color:var(--red)" : v >= 70 ? "color:var(--orange)" : "color:var(--cyan)";
+}
+function formatUptime(s) {
+  if (!s) return "—";
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
+  if (d > 0) return `${d}j ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function renderNodes() {
+  const grid = document.getElementById("nodes-grid");
+  if (!nodesData.length) {
+    grid.innerHTML = `<div class="loading-overlay" style="grid-column:1/-1">Aucun nœud connecté — démarrez un agent</div>`;
+    return;
+  }
+  grid.innerHTML = nodesData.map((n, i) => {
+    const isDown = n.status === "DOWN";
+    const hasAlert = !isDown && (n.cpu > 90 || n.mem > 90 || n.disk > 90);
+    const cardClass = isDown ? "DOWN" : hasAlert ? "alert" : "";
+    const icon = isDown ? "🔴" : hasAlert ? "🟠" : "🟢";
+    const badge = isDown
+      ? `<span class="node-status-badge badge-DOWN">DOWN</span>`
+      : hasAlert
+        ? `<span class="node-status-badge badge-alert">ALERTE</span>`
+        : `<span class="node-status-badge badge-ACTIVE">ACTIF</span>`;
+
+    const services = Object.entries(n.services || {}).map(([k, v]) =>
+      `<span class="service-tag ${v}"><span class="svc-dot"></span>${k.toUpperCase()}</span>`
+    ).join("");
+
+    const lastSeen = n.last_seen_ago !== undefined
+      ? (n.last_seen_ago < 5 ? "À l'instant" : `Il y a ${n.last_seen_ago}s`)
+      : "—";
+
+    return `<div class="node-card ${cardClass}" onclick="openDetail('${n.id}')"
+                 style="animation-delay:${i*0.06}s">
+      <div class="node-card-header">
+        <span style="font-size:16px">${icon}</span>
+        <span class="node-name">${n.id}</span>
+        <span class="node-os">${n.os || "?"}</span>
+        ${badge}
+      </div>
+      <div class="node-card-body">
+        ${isDown ? `<div style="text-align:center;padding:16px;color:var(--red);font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:2px">— NŒUD HORS LIGNE —</div>` : `
+        <div class="metric-row">
+          <div class="metric-header"><span class="metric-name">CPU</span><span class="metric-val" style="${valStyle(n.cpu)}">${n.cpu}%</span></div>
+          <div class="metric-bar"><div class="metric-fill ${fillClass(n.cpu)}" style="width:${n.cpu}%"></div></div>
+        </div>
+        <div class="metric-row">
+          <div class="metric-header"><span class="metric-name">MÉMOIRE</span><span class="metric-val" style="${valStyle(n.mem)}">${n.mem}%</span></div>
+          <div class="metric-bar"><div class="metric-fill ${fillClass(n.mem)}" style="width:${n.mem}%"></div></div>
+        </div>
+        <div class="metric-row">
+          <div class="metric-header"><span class="metric-name">DISQUE</span><span class="metric-val" style="${valStyle(n.disk)}">${n.disk}%</span></div>
+          <div class="metric-bar"><div class="metric-fill ${fillClass(n.disk)}" style="width:${n.disk}%"></div></div>
+        </div>
+        <div class="services-row">${services}</div>`}
+      </div>
+      <div class="node-footer">
+        <span>UPTIME: ${formatUptime(n.uptime)}</span>
+        <span style="color:var(--text-dim)">${lastSeen}</span>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderSidebar() {
+  const el = document.getElementById("sidebar-nodes");
+  if (!nodesData.length) { el.innerHTML = `<div style="padding:12px 20px;color:var(--text-dim);font-size:11px">Aucun nœud</div>`; return; }
+  el.innerHTML = nodesData.map(n => {
+    const col = n.status === "DOWN" ? "#ff3355" : (n.cpu > 90 || n.mem > 90) ? "#ff8c00" : "#00ff88";
+    return `<div class="node-list-item" onclick="openDetail('${n.id}')">
+      <span class="node-status-dot" style="background:${col}"></span>${n.id}
+    </div>`;
+  }).join("");
+
+  // Populate command node select
+  const sel = document.getElementById("cmd-node");
+  sel.innerHTML = `<option value="">— Sélectionner —</option>` +
+    nodesData.filter(n => n.status !== "DOWN")
+             .map(n => `<option value="${n.id}">${n.id}</option>`).join("");
+}
+
+// ══════════════════════════════════════════════════
+//  SPARKLINE SVG
+// ══════════════════════════════════════════════════
+function drawSparkline(svgId, data, color) {
+  const svg = document.getElementById(svgId);
+  if (!svg || !data || data.length < 2) return;
+  const W = 400, H = 100, pad = 4;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * W;
+    const y = H - pad - (v / 100) * (H - pad * 2);
+    return `${x},${y}`;
+  }).join(" ");
+  const last = data[data.length - 1];
+  const lx = W, ly = H - pad - (last / 100) * (H - pad * 2);
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="g-${svgId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${color}" stop-opacity=".3"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity=".02"/>
+      </linearGradient>
+      <filter id="f-${svgId}"><feGaussianBlur stdDeviation="1.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    ${[25,50,75].map(y => {
+      const yp = H - pad - (y/100)*(H-pad*2);
+      return `<line x1="0" y1="${yp}" x2="${W}" y2="${yp}" stroke="${color}" stroke-opacity=".1" stroke-dasharray="4,4"/>
+              <text x="4" y="${yp-3}" fill="${color}" fill-opacity=".4" font-size="8" font-family="Share Tech Mono">${y}%</text>`;
+    }).join("")}
+    <polygon points="${pts} ${W},${H} 0,${H}" fill="url(#g-${svgId})"/>
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"
+              filter="url(#f-${svgId})" stroke-linejoin="round"/>
+    <circle cx="${lx}" cy="${ly}" r="3" fill="${color}" filter="url(#f-${svgId})"/>
+    <text x="${lx-24}" y="${ly-6}" fill="${color}" font-size="9" font-family="Share Tech Mono">${last}%</text>
+  `;
+}
+
+// ══════════════════════════════════════════════════
+//  DETAIL PANEL
+// ══════════════════════════════════════════════════
+async function openDetail(nodeId) {
+  const n = nodesData.find(x => x.id === nodeId);
+  if (!n) return;
+
+  const isDown = n.status === "DOWN";
+  const hasAlert = !isDown && (n.cpu > 90 || n.mem > 90 || n.disk > 90);
+  document.getElementById("dp-name").textContent = n.id;
+  document.getElementById("dp-badge").innerHTML =
+    `<span class="node-status-badge ${isDown?"badge-DOWN":hasAlert?"badge-alert":"badge-ACTIVE"}"
+     style="font-size:12px;padding:4px 12px">${n.status}</span>`;
+
+  document.getElementById("dp-grid").innerHTML = `
+    <div class="detail-info-box"><div class="detail-info-label">Système</div><div class="detail-info-val">${n.os||"?"}</div></div>
+    <div class="detail-info-box"><div class="detail-info-label">Uptime</div><div class="detail-info-val">${formatUptime(n.uptime)}</div></div>
+    <div class="detail-info-box"><div class="detail-info-label">CPU</div><div class="detail-info-val" style="${valStyle(n.cpu)}">${n.cpu}%</div></div>
+    <div class="detail-info-box"><div class="detail-info-label">RAM</div><div class="detail-info-val" style="${valStyle(n.mem)}">${n.mem}%</div></div>
+    <div class="detail-info-box"><div class="detail-info-label">Disque</div><div class="detail-info-val" style="${valStyle(n.disk)}">${n.disk}%</div></div>
+    <div class="detail-info-box"><div class="detail-info-label">Dernier contact</div><div class="detail-info-val">${n.last_seen_ago ?? "—"}s</div></div>
+  `;
+
+  document.getElementById("dp-services").innerHTML =
+    Object.entries(n.services || {}).map(([k, v]) =>
+      `<span class="service-tag ${v}"><span class="svc-dot"></span>${k.toUpperCase()}</span>`
+    ).join("");
+
+  document.getElementById("dp-ports").innerHTML =
+    Object.entries(n.ports || {}).map(([p, s]) =>
+      `<div class="port-item"><span style="color:var(--text-dim)">:${p}</span>
+       <span class="${s==="OPEN"?"port-open":"port-closed"}">${s}</span></div>`
+    ).join("");
+
+  // Historique spécifique au nœud
+  try {
+    const hist = await apiFetch(`/api/history?node=${encodeURIComponent(nodeId)}`);
+    if (hist.cpu && hist.cpu.length > 1) {
+      drawSparkline("dp-chart", hist.cpu, "#00d4ff");
+    }
+  } catch (e) { /* silencieux */ }
+
+  document.getElementById("detail-panel").classList.add("open");
+}
+
+function closeDetail() {
+  document.getElementById("detail-panel").classList.remove("open");
+}
+
+// ══════════════════════════════════════════════════
+//  COMMANDES
+// ══════════════════════════════════════════════════
+async function sendCommand() {
+  const node    = document.getElementById("cmd-node").value;
+  const command = document.getElementById("cmd-command").value;
+  const btn     = document.getElementById("cmd-btn");
+
+  if (!node) { addLog("WARN", "Sélectionnez un nœud cible avant d'envoyer une commande."); return; }
+
+  btn.textContent = "⏳ ENVOI EN COURS...";
+  btn.className = "cmd-btn loading";
+
+  try {
+    const result = await apiPost("/api/command", { node, command });
+    addLog("OK", `Commande '${command}' envoyée à '${node}' — ${result.message || "OK"}`);
+    btn.textContent = "✓ COMMANDE ENVOYÉE";
+    btn.className = "cmd-btn success";
+  } catch (e) {
+    addLog("ERROR", `Échec commande '${command}' → ${node} : ${e.message}`);
+    btn.textContent = "✕ ERREUR — RÉESSAYER";
+    btn.className = "cmd-btn";
+  }
+  setTimeout(() => { btn.textContent = "▶ ENVOYER LA COMMANDE"; btn.className = "cmd-btn"; }, 3000);
+}
+
+// ══════════════════════════════════════════════════
+//  TERMINAL LOG
+// ══════════════════════════════════════════════════
+function addLog(type, msg) {
+  const term = document.getElementById("terminal-log");
+  const now  = new Date().toTimeString().slice(0, 8);
+  const cls  = { INFO: "log-info", OK: "log-ok", WARN: "log-warn", ERROR: "log-error" }[type] || "log-info";
+  const line = document.createElement("span");
+  line.className = "log-line";
+  line.innerHTML = `<span class="log-time">[${now}]</span> <span class="${cls}">[${type}]</span> ${msg}`;
+  term.appendChild(line);
+  // Garder 100 lignes max
+  while (term.children.length > 100) term.removeChild(term.firstChild);
+  term.scrollTop = term.scrollHeight;
+}
+
+// ══════════════════════════════════════════════════
+//  HORLOGE + REFRESH AUTOMATIQUE
+// ══════════════════════════════════════════════════
+function updateClock() {
+  document.getElementById("clock").textContent = new Date().toTimeString().slice(0, 8);
+}
+
+// Compte à rebours affiché
+setInterval(() => {
+  refreshTimer--;
+  document.getElementById("refresh-counter").textContent = refreshTimer + "s";
+  if (refreshTimer <= 0) {
+    refreshTimer = 10;
+    loadAll();
+  }
+}, 1000);
+
+// ══════════════════════════════════════════════════
+//  INITIALISATION
+// ══════════════════════════════════════════════════
+setInterval(updateClock, 1000);
+updateClock();
+
+addLog("INFO", "Dashboard NetWatch démarré");
+addLog("INFO", `Connexion à l'API : ${API}`);
+
+// Premier chargement
+loadAll().then(() => {
+  addLog("OK", "Connexion à l'API établie avec succès !");
+}).catch(() => {
+  addLog("ERROR", "API non disponible. Démarrez server.py et rechargez la page.");
+});
+</script>
+</body>
+</html>
